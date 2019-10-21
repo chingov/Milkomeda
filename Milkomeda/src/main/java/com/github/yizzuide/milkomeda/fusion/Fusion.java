@@ -16,12 +16,14 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Fusion {
     /**
-     * 类型标签
+     * 打个标签，用于在转换器<code>converter</code>里识别
+     * @return String
      */
     String tag() default "fusion";
 
     /**
      * 同tag
+     * @return String
      */
     String value() default "";
 }
