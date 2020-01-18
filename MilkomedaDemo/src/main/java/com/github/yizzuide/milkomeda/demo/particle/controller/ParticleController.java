@@ -23,7 +23,6 @@ import java.util.Map;
 @RequestMapping("particle")
 public class ParticleController {
 
-    // 注意：由于配置了限制器链，就有了两个去重限制器，这里使用@Resource按Bean名注入
     @Resource
     private IdempotentLimiter idempotentLimiter;
 
@@ -63,9 +62,9 @@ public class ParticleController {
     }
 
     @RequestMapping("check3")
-    // 注解的方式限制一次请求的重复调用（注：@用于取HTTP请求header里的值）
+    // 注解的方式限制一次请求的重复调用（:用于取HTTP请求header里的值）
     // 注意：由于配置了限制器链，就有了两个去重限制器，由于框架内部根据类型查找，这里需要通过limiterBeanName指定
-    @Limit(name = "user:check", key = "@Token", expire = 60L, limiterBeanName = "idempotentLimiter")
+    @Limit(name = "user:check", key = ":Token", expire = 60L, limiterBeanName = "idempotentLimiter")
     public ResponseEntity check3(Particle particle/*这个状态值自动注入*/) throws Throwable {
         // 判断是否被限制
         log.info("limited: {}", particle.isLimited());

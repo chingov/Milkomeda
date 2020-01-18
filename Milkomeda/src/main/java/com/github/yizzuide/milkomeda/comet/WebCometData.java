@@ -34,9 +34,13 @@ public class WebCometData extends CometData {
      */
     private String requestMethod;
     /**
-     * 请求参数
+     * 请求参数（使用SpringMVC开发的接口同时支持form表单数据和自定义消息体数据）
      */
     private String requestParams;
+    /**
+     * 请求头
+     */
+    private String requestHeaders;
     /**
      * 请求 IP
      */

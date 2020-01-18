@@ -16,6 +16,7 @@ import java.util.regex.Pattern;
  *
  * @author yizzuide
  * @since 1.13.0
+ * @version 1.15.0
  * Create at 2019/09/21 17:23
  */
 public class DataTypeConvertUtil {
@@ -39,6 +40,49 @@ public class DataTypeConvertUtil {
     }
 
     /**
+     * Object 转 String
+     * @param obj   Object
+     * @return  String
+     */
+    public static String toString(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+        return obj.toString();
+    }
+
+    /**
+     * Object 转 Long
+     * @param obj Object
+     * @return Integer
+     */
+    public static Long toLong(Object obj) {
+        if (obj == null) {
+            return 0L;
+        }
+        if (obj instanceof Double || obj instanceof Float) {
+            return Long.valueOf(StringUtils.substringBefore(obj.toString(), "."));
+        }
+        if (obj instanceof Number) {
+            return Long.valueOf(obj.toString());
+        }
+        if (obj instanceof String) {
+            return Long.valueOf(obj.toString());
+        } else {
+            return 0L;
+        }
+    }
+
+    /**
+     * Object 转 int
+     * @param obj Object
+     * @return int
+     */
+    public static Integer toInt(Object obj) {
+        return toLong(obj).intValue();
+    }
+
+    /**
      * Long 转 Integer
      * @param num Long
      * @return Integer
@@ -50,22 +94,13 @@ public class DataTypeConvertUtil {
     }
 
     /**
-     * Object 转 int
-     * @param num Object
-     * @return int
-     */
-    public static int intVal(Object num) {
-        return Integer.parseInt(String.valueOf(num));
-    }
-
-    /**
      * 将二进制转换成16进制
      *
      * @param buf 字节数组
      * @return 16进制字符串
      */
     public static String byte2HexStr(byte[] buf) {
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         for (byte b : buf) {
             String hex = Integer.toHexString(b & 0xFF);
             if (hex.length() == 1) {

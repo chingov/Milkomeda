@@ -1,12 +1,12 @@
 package com.github.yizzuide.milkomeda.pulsar;
 
+import com.github.yizzuide.milkomeda.util.ThreadUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -18,20 +18,19 @@ import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Function;
 
 import static com.github.yizzuide.milkomeda.util.ReflectUtil.*;
 
 /**
  * Pulsar
- *
+ * <p>
  * 用于存放和管理DeferredResult的容器，配合应用注解 <code>@PulsarFlow</code> 切面，
  * 并提供参数注入DeferredResult的包装类 <code>PulsarDeferredResult</code> 到请求参数列表。
  *
  * @author yizzuide
- * @since  0.1.0
- * @version 1.11.0
+ * @since 0.1.0
+ * @version 1.16.0
  * Create at 2019/03/29 10:36
  */
 @Slf4j
@@ -44,16 +43,16 @@ public class Pulsar {
     private Map<String, PulsarDeferredResult> deferredResultMap;
 
     /**
-     * 线程池执行器
+     * 线程池执行器（从SpringBoot 2.1.0开始默认已经装配）
      */
-    @Autowired @Qualifier("pulsarTaskExecutor")
-    private ThreadPoolTaskExecutor taskExecutor;
+    @Autowired
+    private ThreadPoolTaskExecutor applicationTaskExecutor;
 
     /**
-     *  Error 错误回调
-     *
-     *  Throwable：错误异常
-     *  Object：响应数据
+     * Error 错误回调
+     * <p>
+     * Throwable：错误异常
+     * Object：响应数据
      */
     private Function<Throwable, Object> errorCallback;
 
@@ -67,13 +66,14 @@ public class Pulsar {
      */
     private static final int DEFAULT_CAPACITY = 64;
 
-    public Pulsar() {
+    Pulsar() {
         deferredResultMap = new ConcurrentHashMap<>(DEFAULT_CAPACITY);
         PulsarHolder.setPulsar(this);
     }
 
     /**
      * 记存一个DeferredResult
+     *
      * @param pulsarDeferredResult PulsarDeferredResult
      */
     private void putDeferredResult(PulsarDeferredResult pulsarDeferredResult) {
@@ -82,6 +82,7 @@ public class Pulsar {
 
     /**
      * 通过标识符取出PulsarDeferredResult
+     *
      * @param id 标识符
      * @return PulsarDeferredResult
      */
@@ -91,6 +92,7 @@ public class Pulsar {
 
     /**
      * 通过标识符得到DeferredResult
+     *
      * @param id 标识符
      * @return DeferredResult
      */
@@ -101,6 +103,7 @@ public class Pulsar {
 
     /**
      * 移除DeferredResult
+     *
      * @param id 标识符
      */
     private void removeDeferredResult(String id) {
@@ -109,12 +112,13 @@ public class Pulsar {
 
     /**
      * 对使用了 @PulsarFlow 注解实现环绕切面
+     *
      * @param joinPoint 切面连接点
      * @return 响应数据对象
      * @throws Throwable 可抛出异常
      */
     @Around("@annotation(com.github.yizzuide.milkomeda.pulsar.PulsarFlow)")
-    Object handlePulse(ProceedingJoinPoint joinPoint) throws Throwable {
+    Object around(ProceedingJoinPoint joinPoint) throws Throwable {
         // 检测方法返回值
         MethodSignature methodSignature = (MethodSignature) joinPoint.getSignature();
         String invokeMethodName = joinPoint.getSignature().getName();
@@ -168,6 +172,8 @@ public class Pulsar {
             // 解析表达式
             idValue = extractValue(joinPoint, id);
             pulsarDeferredResult.setDeferredResultID(idValue);
+            // 注解设置成功，放入容器
+            putDeferredResult(pulsarDeferredResult);
         }
 
         // 调用方法实现
@@ -176,6 +182,10 @@ public class Pulsar {
 
         // 方法有返回值且不是DeferredResult，则不作DeferredResult处理
         if (null != returnObj && !(returnObj instanceof DeferredResult)) {
+            // 通过注解存放过，则删除
+            if (null != idValue) {
+                removeDeferredResult(idValue);
+            }
             return returnObj;
         }
 
@@ -185,11 +195,14 @@ public class Pulsar {
                     invokeMethodName);
         }
 
+        // 如果注解没有设置，在方法设置后放入容器
+        if (null == idValue) {
+            putDeferredResult(pulsarDeferredResult);
+        }
+
         // 无论超时还是成功响应，删除这个DeferredResult
         deferredResult.onCompletion(() -> removeDeferredResult(pulsarDeferredResult.getDeferredResultID()));
 
-        // 放入容器
-        putDeferredResult(pulsarDeferredResult);
         // 返回
         return deferredResult;
     }
@@ -229,50 +242,45 @@ public class Pulsar {
 
     /**
      * 提交一个基于Spring的ThreadPoolTaskExecutor任务运行
+     *
      * @param runnable Runnable
      */
     public void post(Runnable runnable) {
-        taskExecutor.execute(runnable);
+        applicationTaskExecutor.execute(runnable);
     }
 
     /**
      * 配置默认的Spring MVC异步支持
+     *
      * @param configurer 配置对象
-     * @param timeout 超时时间，ms
+     * @param timeout    超时时间，ms
+     * @deprecated since 1.16.0，因为SpringBoot 2.1.0版本开始默认已装配
      */
     public void configure(AsyncSupportConfigurer configurer, long timeout) {
-        configure(configurer, 5, 10, 50, 200, timeout);
+        configure(configurer, 5, 10, 200, 100, timeout);
     }
 
     /**
      * 自定义配置的异步支持
-     * @param configurer        配置对象
-     * @param corePoolSize      核心池大小
-     * @param maxPoolSize       最大线程池数
-     * @param queueCapacity     队列容量
-     * @param keepAliveSeconds  线程保存存活时间
-     * @param timeout           超时时间，ms
+     *
+     * @param configurer       配置对象
+     * @param corePoolSize     核心池大小
+     * @param maxPoolSize      最大线程池数
+     * @param queueCapacity    队列容量
+     * @param keepAliveSeconds 线程保存存活时间
+     * @param timeout          超时时间，ms
+     * @deprecated  since 1.16.0，因为SpringBoot 2.1.0版本开始默认已装配
      */
     public void configure(AsyncSupportConfigurer configurer, int corePoolSize, int maxPoolSize, int queueCapacity, int keepAliveSeconds, long timeout) {
         // 默认超时时间
         configurer.setDefaultTimeout(timeout);
-        // 线程池维护线程的最少数量
-        taskExecutor.setCorePoolSize(corePoolSize);
-        // 线程池维护线程的最大数量
-        taskExecutor.setMaxPoolSize(maxPoolSize);
-        // 线程池所使用的缓冲队列
-        taskExecutor.setQueueCapacity(queueCapacity);
-        // 线程池维护线程所允许的空闲时间
-        taskExecutor.setKeepAliveSeconds(keepAliveSeconds);
-        taskExecutor.setThreadNamePrefix("pulsar-");
-        // 线程池对拒绝任务（无线程可用）的处理策略，目前只支持AbortPolicy、CallerRunsPolicy，默认为后者
-        taskExecutor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        taskExecutor.initialize();
-        configurer.setTaskExecutor(taskExecutor);
+        ThreadUtil.configTaskExecutor(applicationTaskExecutor, "pulsar-", corePoolSize, maxPoolSize, queueCapacity, keepAliveSeconds);
+        configurer.setTaskExecutor(applicationTaskExecutor);
     }
 
     /**
      * 用于处理 Error 类型（Exception类型还是使用 @ExceptionHandler 捕获）
+     *
      * @param errorCallback 失败回调
      */
     public void setErrorCallback(Function<Throwable, Object> errorCallback) {
@@ -282,6 +290,7 @@ public class Pulsar {
 
     /**
      * 处理超时
+     *
      * @param timeoutCallback 需要返回响应的超时数据
      */
     public void setTimeoutCallback(Callable<Object> timeoutCallback) {

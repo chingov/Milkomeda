@@ -2,16 +2,17 @@ package com.github.yizzuide.milkomeda.demo.comet.config;
 
 import com.github.yizzuide.milkomeda.comet.CometAspect;
 import com.github.yizzuide.milkomeda.comet.CometData;
-import com.github.yizzuide.milkomeda.comet.CometRecorder;
-import com.github.yizzuide.milkomeda.comet.WebCometData;
-import com.github.yizzuide.milkomeda.demo.comet.pojo.ProfileWebCometData;
-import com.github.yizzuide.milkomeda.util.JSONUtil;
+import com.github.yizzuide.milkomeda.demo.comet.collector.CollectorType;
+import com.github.yizzuide.milkomeda.mix.collector.Collector;
+import com.github.yizzuide.milkomeda.mix.collector.CollectorFactory;
+import com.github.yizzuide.milkomeda.mix.collector.CollectorRecorder;
+import com.github.yizzuide.milkomeda.pillar.PillarExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.ResponseEntity;
 
-import javax.servlet.http.HttpServletRequest;
+import java.util.List;
 
 /**
  * CometConfig
@@ -24,38 +25,29 @@ import javax.servlet.http.HttpServletRequest;
 public class CometConfig {
 
     @Autowired
-    public void config(CometAspect cometAspect) {
-        // 设置日记采集器
-        cometAspect.setRecorder(new CometRecorder() {
-            @Override
-            public void onRequest(CometData prototype, String tag, HttpServletRequest request) {
-                log.info("onRequest {} - {} - {}", prototype, tag, request);
-                // 根据 prototype 实际采集日志实体，这里可以根据业务添加相应业务
-                if (tag.equals("profile")) {
-                    ProfileWebCometData profileCometData = (ProfileWebCometData) prototype;
-                    String uid = String.valueOf(request.getParameter("uid"));
-                    profileCometData.setUid(uid);
-                }
-                // 异步将日志存储到MySQL数据库或ES
-            }
+    private List<Collector> collectors;
 
-            @Override
-            public Object onReturn(CometData cometData, Object returnData) {
-                log.info("onReturn {}", cometData);
-
-                // 异步将日志存储到MySQL数据库或ES
-
-                // 这里可以修改返回值
-                if (cometData instanceof WebCometData && returnData instanceof ResponseEntity) {
-                    return ResponseEntity.ok("ok");
-                }
-                return returnData;
-            }
-
-            @Override
-            public void onThrowing(CometData cometData, Exception e) {
-                log.error("onThrowing {}", JSONUtil.serialize(cometData));
-            }
-        });
+    @Bean("cometPillarExecutor") // 这里取个别名（因为在PillarConfig例子中配置过了）
+    public PillarExecutor<CometData, Object> pillarExecutor() {
+        PillarExecutor<CometData, Object> pillarExecutor = new PillarExecutor<>();
+        pillarExecutor.addPillarList(collectors);
+        return pillarExecutor;
     }
+
+    @Bean
+    CollectorFactory collectorFactory(PillarExecutor<CometData, Object> pillarExecutor) {
+        return new CollectorFactory(pillarExecutor, CollectorType.values());
+    }
+
+    @Bean
+    CollectorRecorder logRecorder() {
+        return new CollectorRecorder();
+    }
+
+    @Autowired
+    public void config(CometAspect cometAspect, CollectorRecorder collectorRecorder) {
+        // 设置日志采集器
+        cometAspect.setRecorder(collectorRecorder);
+    }
+
 }

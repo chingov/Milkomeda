@@ -1,5 +1,8 @@
 package com.github.yizzuide.milkomeda.pillar;
 
+import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
+
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -16,7 +19,7 @@ import java.util.stream.Collectors;
  *
  * @author yizzuide
  * @since 0.2.0
- * @version 1.8.0
+ * @version 1.15.0
  * Create at 2019/04/11 14:14
  */
 public class PillarExecutor<P, R> {
@@ -39,15 +42,30 @@ public class PillarExecutor<P, R> {
 
     /**
      * 根据类型名获取分流柱
+     * <br><br>
+     * PECS：Producer Extends Consumer Super
+     * <br> - ? extends T: 只出不进（用于生产者）
+     * <br> - ? super T: 只进不出（用于消费者）
      * @param type 分流类型
      * @return 分流柱集合
      */
     public List<? extends Pillar<P, R>> getPillars(String type) {
+        if (StringUtils.isEmpty(type)) return null;
         return pillars.stream()
                 .filter(processor -> type.equals(processor.supportType()))
                 .collect(Collectors.toList());
     }
 
+    /**
+     * 根据类型名获取分流柱
+     * @param type 分流类型
+     * @return 分流柱集合
+     */
+    public Pillar<P, R> getPillar(String type) {
+        List<? extends Pillar<P, R>> pillars = getPillars(type);
+        if (CollectionUtils.isEmpty(pillars)) throw new IllegalArgumentException("type " + type +" not find");
+        return pillars.get(0);
+    }
 
     /**
      * 添加一个分流柱
