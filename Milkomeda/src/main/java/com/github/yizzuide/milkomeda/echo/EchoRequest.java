@@ -19,7 +19,7 @@ import java.util.Map;
  *
  * @author yizzuide
  * @since 1.13.0
- * @since 1.13.10
+ * @version 3.12.8
  * Create at 2019/09/21 19:00
  */
 @Slf4j
@@ -27,12 +27,13 @@ public abstract class EchoRequest extends AbstractRequest {
 
     @Override
     @SuppressWarnings({"unchecked", "rawtypes"})
-    protected <T> EchoResponseData<T> createReturnData(Object respData, TypeReference<T> specType, boolean useStandardHTTP) throws EchoException {
+    protected <T> EchoResponseData<T> createReturnData(Object respData, TypeReference<T> specType, boolean useStandardHTTP, boolean forceCamel) throws EchoException {
         if (null == respData) {
             return responseData();
         }
         // 指定的类型
         Class<?> specClazz = TypeUtil.type2Class(specType);
+        boolean isStringType = String.class == specClazz;
         boolean isMapType = Map.class == specClazz;
         boolean isListType = List.class == specClazz;
 
@@ -92,6 +93,37 @@ public abstract class EchoRequest extends AbstractRequest {
                 BeanUtils.populate(responseData, (Map) respData);
             }
 
+            // 如果消息体为空，直接返回
+            if (responseData.getData() == null) {
+                return responseData;
+            }
+
+            // data内容识别转换
+            if (responseData.getData() instanceof String) {
+                // 指定的为字符串类型直接返回
+                if (isStringType) {
+                    return responseData;
+                }
+                // 去字符串符和反斜杠
+                String dataStr = (String) responseData.getData();
+                if (dataStr.startsWith("\"")) {
+                    dataStr = dataStr.substring(1);
+                }
+                if (dataStr.endsWith("\"")) {
+                    dataStr = dataStr.substring(0, dataStr.length() - 1);
+                }
+                if (dataStr.contains("\\")) {
+                    dataStr = dataStr.replaceAll("\\\\", "");
+                }
+                // 驼峰转换
+                if (forceCamel) {
+                    responseData.setData(JSONUtil.toCamel(dataStr, specType));
+                    return responseData;
+                }
+                responseData.setData(JSONUtil.nativeRead(dataStr, specType));
+                return responseData;
+            }
+
             // 指定类型为非Map的处理
             if (!isMapType) {
                 // 如果指定是List
@@ -111,7 +143,11 @@ public abstract class EchoRequest extends AbstractRequest {
                         return responseData;
                     }
                 }
-                responseData.setData(JSONUtil.nativeRead(JSONUtil.serialize(responseData.getData()), specType));
+                if (responseData.getData() instanceof String) {
+                    responseData.setData(JSONUtil.nativeRead((String) responseData.getData(), specType));
+                } else {
+                    responseData.setData(JSONUtil.nativeRead(JSONUtil.serialize(responseData.getData()), specType));
+                }
             }
         } catch (Exception e) {
             log.error("EchoRequest:- create return Data error: {}", e.getMessage(), e);

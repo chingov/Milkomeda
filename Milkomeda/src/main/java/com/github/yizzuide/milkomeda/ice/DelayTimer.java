@@ -1,9 +1,9 @@
 package com.github.yizzuide.milkomeda.ice;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.event.ApplicationStartedEvent;
 import org.springframework.context.ApplicationListener;
-import org.springframework.context.event.ContextRefreshedEvent;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.lang.NonNull;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 /**
@@ -11,40 +11,22 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
  *
  * @author yizzuide
  * @since 1.15.0
- * @version 2.0.1
+ * @version 3.8.0
  * Create at 2019/11/16 18:57
  */
-public class DelayTimer implements ApplicationListener<ContextRefreshedEvent> {
-
-    @Autowired
-    private JobPool jobPool;
-
-    @Autowired
-    private DelayBucket delayBucket;
-
-    @Autowired
-    private ReadyQueue readyQueue;
+public class DelayTimer implements ApplicationListener<ApplicationStartedEvent> {
 
     @Autowired
     private IceProperties props;
 
     @Autowired
-    private StringRedisTemplate redisTemplate;
-
-    @Autowired
     private ThreadPoolTaskScheduler taskScheduler;
 
-    // 启动标识
-    private boolean startup;
+    @Autowired
+    private DelegatingDelayJobHandler delegatingDelayJobHandler;
 
     @Override
-    public void onApplicationEvent(ContextRefreshedEvent contextRefreshedEvent) {
-        if (startup) return;
-        // 启动Timer
-        for (int i = 0; i < props.getDelayBucketCount(); i++) {
-            taskScheduler.scheduleWithFixedDelay(new DelayJobHandler(redisTemplate, jobPool, delayBucket, readyQueue, i, props),
-                    props.getDelayBucketPollRate());
-        }
-        startup = true;
+    public void onApplicationEvent(@NonNull ApplicationStartedEvent event) {
+        taskScheduler.scheduleWithFixedDelay(delegatingDelayJobHandler, props.getDelayBucketPollRate());
     }
 }

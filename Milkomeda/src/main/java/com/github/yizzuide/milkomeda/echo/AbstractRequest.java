@@ -25,7 +25,7 @@ import java.util.Map;
  *
  * @author yizzuide
  * @since 1.13.0
- * @version 1.13.12
+ * @version 3.12.3
  * Create at 2019/09/21 16:48
  */
 @Slf4j
@@ -147,7 +147,8 @@ public abstract class AbstractRequest {
      * @return  EchoResponseData
      * @throws EchoException 请求异常
      */
-    public <T> EchoResponseData<T> sendRequest(HttpMethod method, String url,  Map<String, String> headerMap, Map<String, Object> params, TypeReference<T> specType, boolean forceCamel) throws EchoException {
+    @SuppressWarnings("rawtypes")
+    public <T> EchoResponseData<T> sendRequest(HttpMethod method, String url, Map<String, String> headerMap, Map<String, Object> params, TypeReference<T> specType, boolean forceCamel) throws EchoException {
         // 有消息体的请求方式
         boolean hasBody = hasBody(method);
         // 请求参数
@@ -166,7 +167,7 @@ public abstract class AbstractRequest {
             }
         }
         if (showLog) {
-            log.info("abstractRequest:- response with url: {}, params: {}, reqParams:{}, data: {}", url, params, reqParams, body);
+            log.info("abstractRequest:- response with url: {}, data: {}", url, body);
         }
 
         Object responseEntity = null;
@@ -194,7 +195,7 @@ public abstract class AbstractRequest {
             }
         }
 
-        EchoResponseData<T> responseData = createReturnData(responseEntity, specType, useStandardHTTP);
+        EchoResponseData<T> responseData = createReturnData(responseEntity, specType, useStandardHTTP, forceCamel);
         if (useStandardHTTP) {
             responseData.setCode(String.valueOf(request.getStatusCodeValue()));
         }
@@ -210,7 +211,8 @@ public abstract class AbstractRequest {
      * @param params    源请求参数
      * @return  InputStream
      */
-    public InputStream sendRequest(HttpMethod method, String url,  Map<String, String> headerMap, Map<String, Object> params) {
+    @SuppressWarnings("rawtypes")
+    public InputStream sendRequest(HttpMethod method, String url, Map<String, String> headerMap, Map<String, Object> params) {
         // 有消息体的请求方式
         boolean hasBody = hasBody(method);
         // 请求参数
@@ -310,14 +312,15 @@ public abstract class AbstractRequest {
     /**
      * 返回数据类型的模板方法
      *
+     * @param <T>      EchoResponseData的data字段类型
      * @param respData 第三方方响应的数据，Map或List
      * @param specType ResponseData的data字段类型
-     * @param <T>      EchoResponseData的data字段类型
      * @param useStandardHTTP 是否使用标准的HTTP标准码
+     * @param forceCamel data里的字段是否强制下划线转驼峰
      * @return 统一响应数据类
      * @throws EchoException 请求异常
      */
-    protected abstract <T> EchoResponseData<T> createReturnData(Object respData, TypeReference<T> specType, boolean useStandardHTTP) throws EchoException;
+    protected abstract <T> EchoResponseData<T> createReturnData(Object respData, TypeReference<T> specType, boolean useStandardHTTP, boolean forceCamel) throws EchoException;
 
     /**
      * 子类需要实现的参数签名（默认不应用签名）
@@ -325,7 +328,7 @@ public abstract class AbstractRequest {
      * @param inParams  需要签名的业务参数
      * @param outParams 加上签名后的参数，如果Content-Type是APPLICATION_FORM_URLENCODED, 则类型为LinkedMultiValueMap，添加参数需要调用add方法
      */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({"unchecked", "rawtypes"})
     protected void signParam(Map<String, Object> inParams, Map<String, Object> outParams) {
         if (outParams instanceof LinkedMultiValueMap) {
             LinkedMultiValueMap multiValueMap = (LinkedMultiValueMap) outParams;
@@ -363,6 +366,7 @@ public abstract class AbstractRequest {
      * @param responseData 统一响应数据类
      * @throws EchoException 请求异常
      */
+    @SuppressWarnings("rawtypes")
     protected void checkResponse(EchoResponseData responseData) throws EchoException {}
 
     /**

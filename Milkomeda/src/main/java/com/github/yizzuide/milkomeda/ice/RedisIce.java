@@ -1,27 +1,31 @@
 package com.github.yizzuide.milkomeda.ice;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.github.yizzuide.milkomeda.util.Polyfill;
+import com.github.yizzuide.milkomeda.universe.polyfill.RedisPolyfill;
 import com.github.yizzuide.milkomeda.util.RedisUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationListener;
+import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.util.CollectionUtils;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
  * RedisIce
+ * 基于Redis的延迟队列实现
  *
  * @author yizzuide
  * @since 1.15.0
- * @version 1.15.2
+ * @version 3.12.1
  * Create at 2019/11/16 15:20
  */
 @Slf4j
-public class RedisIce implements Ice {
+public class RedisIce implements Ice, ApplicationListener<IceInstanceChangeEvent> {
 
     @Autowired
     private JobPool jobPool;
@@ -35,26 +39,58 @@ public class RedisIce implements Ice {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
-    @Autowired
-    private IceProperties props;
+    private final IceProperties props;
 
-    private static final String KEY_IDEMPOTENT_LIMITER = "ice:range_pop_lock";
+    private String lockKey = "ice:range_pop_lock";
+
+    public RedisIce(IceProperties props) {
+        this.props = props;
+        if (!IceProperties.DEFAULT_INSTANCE_NAME.equals(props.getInstanceName())) {
+            this.lockKey = "ice:range_pop_lock:" + props.getInstanceName();
+        }
+    }
 
     @SuppressWarnings("rawtypes")
     @Override
     public void add(Job job) {
-        job.setId(job.getTopic() + "-" + job.getId());
+        add(job, true, true);
+    }
+
+    @SuppressWarnings("rawtypes")
+    @Override
+    public void add(Job job, boolean mergeIdWithTopic, boolean replaceWhenExists) {
+        if (mergeIdWithTopic) {
+            job.setId(job.getTopic() + "-" + job.getId());
+        }
+        if (!replaceWhenExists && jobPool.exists(job.getId())) {
+            return;
+        }
         job.setStatus(JobStatus.DELAY);
-        RedisUtil.batchOps(() -> {
-            jobPool.push(job);
-            delayBucket.add(new DelayJob(job));
+        RedisUtil.batchOps((operations) -> {
+            jobPool.remove(operations, job.getId());
+            jobPool.push(operations, job);
+            delayBucket.add(operations, new DelayJob(job));
         }, redisTemplate);
     }
 
     @Override
+    public <T> void add(String id, String topic, T body, Duration delay) {
+        add(build(id, topic, body, delay));
+    }
+
+    @Override
     public <T> void add(String id, String topic, T body, long delay) {
-        Job<T> job = new Job<>(id, topic, delay, props.getTtr(), props.getRetryCount(), body);
-        add(job);
+        add(build(id, topic, body, delay));
+    }
+
+    @Override
+    public <T> Job<T> build(String id, String topic, T body, Duration delay) {
+        return build(id, topic, body, delay.toMillis());
+    }
+
+    @Override
+    public <T> Job<T> build(String id, String topic, T body, long delay) {
+        return new Job<>(id, topic, delay, props.getTtr().toMillis(), props.getRetryCount(), body);
     }
 
     @Override
@@ -71,27 +107,27 @@ public class RedisIce implements Ice {
         }
 
         Job<T> mJob = job;
-        RedisUtil.batchOps(() -> {
-            // 设置为处理中状态
-            mJob.setStatus(JobStatus.RESERVED);
-            // 更新延迟时间为TTR
-            delayJob.setDelayTime(System.currentTimeMillis() + mJob.getTtr());
-            jobPool.push(mJob);
-            delayBucket.add(delayJob);
+        // 设置为处理中状态
+        mJob.setStatus(JobStatus.RESERVED);
+        // 更新延迟时间为TTR
+        delayJob.setDelayTime(System.currentTimeMillis() + mJob.getTtr());
+        RedisUtil.batchOps((operations) -> {
+            jobPool.push(operations, mJob);
+            delayBucket.add(operations, delayJob);
         }, redisTemplate);
         return mJob;
     }
 
     @Override
     public <T> List<Job<T>> pop(String topic, int count) {
-        // 空队列直接返回
-        if (readyQueue.size(topic) == 0) return null;
+        // 获取个数小于1或空队列直接返回
+        if (count < 1 || readyQueue.size(topic) == 0) return null;
         // 如果只取1个时，直接使用pop（保证原子性）
         if (count == 1) return Collections.singletonList(pop(topic));
 
         // 使用SetNX锁住资源，防止多线程并发执行，造成重复消费问题
-        boolean absent = RedisUtil.setIfAbsent(KEY_IDEMPOTENT_LIMITER, props.getTaskPopCountLockTimeoutSeconds(), redisTemplate);
-        if (absent) return null;
+        boolean hasObtainLock = RedisUtil.setIfAbsent(this.lockKey, props.getTaskPopCountLockTimeoutSeconds().getSeconds(), redisTemplate);
+        if (!hasObtainLock) return null;
 
         List<Job<T>> jobList;
         try {
@@ -107,21 +143,21 @@ public class RedisIce implements Ice {
                 return jobList;
             }
             List<Job<T>> mJobList = jobList;
-            RedisUtil.batchOps(() -> {
-                for (int i = 0; i < mJobList.size(); i++) {
-                    Job<T> mJob = mJobList.get(i);
-                    // 设置为处理中状态
-                    mJob.setStatus(JobStatus.RESERVED);
-                    // 更新延迟时间为TTR
-                    DelayJob delayJob = delayJobList.get(i);
-                    delayJob.setDelayTime(System.currentTimeMillis() + mJob.getTtr());
-                }
-                jobPool.push(mJobList);
-                delayBucket.add(delayJobList);
+            for (int i = 0; i < mJobList.size(); i++) {
+                Job<T> mJob = mJobList.get(i);
+                // 设置为处理中状态
+                mJob.setStatus(JobStatus.RESERVED);
+                // 更新延迟时间为TTR
+                DelayJob delayJob = delayJobList.get(i);
+                delayJob.setDelayTime(System.currentTimeMillis() + mJob.getTtr());
+            }
+            RedisUtil.batchOps((operations) -> {
+                jobPool.push(operations, mJobList);
+                delayBucket.add(operations, delayJobList);
             }, redisTemplate);
         } finally {
             // 删除Lock
-            Polyfill.redisDelete(redisTemplate, KEY_IDEMPOTENT_LIMITER);
+            RedisPolyfill.redisDelete(redisTemplate, this.lockKey);
         }
         return jobList;
     }
@@ -132,8 +168,18 @@ public class RedisIce implements Ice {
     }
 
     @Override
+    public <T> void finish(RedisOperations<String, String> operations, List<Job<T>> jobs) {
+        delete(operations, jobs);
+    }
+
+    @Override
     public void finish(Object... jobIds) {
         delete(jobIds);
+    }
+
+    @Override
+    public void finish(RedisOperations<String, String> operations, Object... jobIds) {
+        delete(operations, jobIds);
     }
 
     @Override
@@ -143,7 +189,24 @@ public class RedisIce implements Ice {
     }
 
     @Override
+    public <T> void delete(RedisOperations<String, String> operations, List<Job<T>> jobs) {
+        List<String> jobIds = jobs.stream().map(Job::getId).collect(Collectors.toList());
+        delete(operations, jobIds.toArray(new Object[]{}));
+    }
+
+    @Override
     public void delete(Object... jobIds) {
         jobPool.remove(jobIds);
+    }
+
+    @Override
+    public void delete(RedisOperations<String, String> operations, Object... jobIds) {
+        jobPool.remove(operations, jobIds);
+    }
+
+    @Override
+    public void onApplicationEvent(IceInstanceChangeEvent event) {
+        String instanceName = event.getSource().toString();
+        this.lockKey = "ice:range_pop_lock:" + instanceName;
     }
 }

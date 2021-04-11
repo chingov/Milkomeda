@@ -1,15 +1,16 @@
 package com.github.yizzuide.milkomeda.universe.context;
 
-import com.github.yizzuide.milkomeda.comet.CometAspect;
-import com.github.yizzuide.milkomeda.comet.WebCometData;
-import com.github.yizzuide.milkomeda.comet.XCometData;
+import com.github.yizzuide.milkomeda.comet.core.CometAspect;
+import com.github.yizzuide.milkomeda.comet.core.CometInterceptor;
+import com.github.yizzuide.milkomeda.comet.core.WebCometData;
+import com.github.yizzuide.milkomeda.comet.core.XCometData;
 import com.github.yizzuide.milkomeda.universe.el.ELContext;
+import com.github.yizzuide.milkomeda.universe.function.TripleFunction;
 import com.github.yizzuide.milkomeda.universe.metadata.HandlerMetaData;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.core.annotation.AnnotationUtils;
 import org.springframework.util.ReflectionUtils;
-import org.springframework.util.StringUtils;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
@@ -17,14 +18,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 
 /**
  * AopContextHolder
  *
  * @author yizzuide
  * @since 1.13.4
- * @version 1.15.0
+ * @version 3.11.5
  * Create at 2019/10/24 21:17
  */
 public class AopContextHolder {
@@ -47,7 +47,13 @@ public class AopContextHolder {
      * @return WebCometData
      */
     public static WebCometData getWebCometData() {
-        return CometAspect.getCurrentWebCometData();
+        // Filter层采集
+        WebCometData webCometData = CometInterceptor.getWebCometData();
+        if (webCometData == null) {
+            // 方法注解采集
+            return CometAspect.getCurrentWebCometData();
+        }
+        return webCometData;
     }
 
     /**
@@ -64,49 +70,84 @@ public class AopContextHolder {
      * @param handlerAnnotationClazz    处理器注解类
      * @param executeAnnotationClazz    执行方法注解类
      * @param nameProvider              标识名称提供函数
-     * @param useAOP                    执行方法是否使用了切面
      * @param onlyOneExecutorPerHandler 一个组件只有一个处理方法是传true
      * @return  Map
      */
     public static Map<String, List<HandlerMetaData>> getHandlerMetaData(
             Class<? extends Annotation> handlerAnnotationClazz,
             Class<? extends Annotation> executeAnnotationClazz,
-            Function<Annotation, String> nameProvider,
-            boolean useAOP,
+            TripleFunction<Annotation, Annotation, HandlerMetaData, String> nameProvider,
             boolean onlyOneExecutorPerHandler) {
         Map<String, List<HandlerMetaData>> handlerMap = new HashMap<>();
         Map<String, Object> beanMap = ApplicationContextHolder.get().getBeansWithAnnotation(handlerAnnotationClazz);
         for (String key : beanMap.keySet()) {
             Object target = beanMap.get(key);
-            // 如果方法有aop切面，可以通过AopUtils.getTargetClass()获取
-            Method[] methods = ReflectionUtils.getAllDeclaredMethods(useAOP ?
-                    AopUtils.getTargetClass(target.getClass()) : target.getClass());
+            // 查找AOP切面（通过Proxy.isProxyClass()判断类是否是代理的接口类，AopUtils.isAopProxy()判断对象是否被代理），可以通过AopUtils.getTargetClass()获取原Class
+            Class<?> targetClass = AopUtils.isAopProxy(target) ?
+                    AopUtils.getTargetClass(target) : target.getClass();
+            Method[] methods = ReflectionUtils.getAllDeclaredMethods(targetClass);
+            Method[] wrapMethods = null;
+            if (AopUtils.isAopProxy(target)) {
+                wrapMethods = ReflectionUtils.getAllDeclaredMethods(target.getClass());
+            }
+            Annotation handlerAnnotation = targetClass.getAnnotation(handlerAnnotationClazz);
             for (Method method : methods) {
                 // 获取指定方法上的注解的属性
                 final Annotation executeAnnotation = AnnotationUtils.findAnnotation(method, executeAnnotationClazz);
                 if (null == executeAnnotation) {
                     continue;
                 }
+                HandlerMetaData metaData = new HandlerMetaData();
+                metaData.setTarget(target);
+                if (wrapMethods == null) {
+                    metaData.setMethod(method);
+                } else {
+                    for (Method wrapMethod : wrapMethods) {
+                        if (method.getName().equals(wrapMethod.getName())) {
+                            metaData.setMethod(wrapMethod);
+                            break;
+                        }
+                    }
+                }
                 // 支持SpEL
-                String name = nameProvider.apply(executeAnnotation);
-                if (name.startsWith("@") || name.startsWith("#") || name.startsWith("T(") || name.startsWith("args[")) {
-                    name = ELContext.getValue(target, new Object[]{}, target.getClass(), method, name);
+                String name = nameProvider.apply(executeAnnotation, handlerAnnotation, metaData);
+                if (name.startsWith("'") || name.startsWith("@") || name.startsWith("#") || name.startsWith("T(") || name.startsWith("args[")) {
+                    name = ELContext.getValue(target, new Object[]{}, target.getClass(), method, name, String.class);
                 }
-                if (StringUtils.isEmpty(name)) {
-                    throw new IllegalArgumentException("Please specify the [topic] of "+ executeAnnotation +" !");
+                if (name == null) {
+                    throw new IllegalArgumentException("Please specify the [tag] of "+ executeAnnotation +" !");
                 }
+                metaData.setName(name);
                 if (handlerMap.containsKey(name)) {
-                    handlerMap.get(name).add(new HandlerMetaData(name, target, method));
+                    handlerMap.get(name).add(metaData);
                 } else {
                     List<HandlerMetaData> list = new ArrayList<>();
-                    list.add(new HandlerMetaData(name, target, method));
+                    list.add(metaData);
                     handlerMap.put(name, list);
                 }
-                // 如果一个组件只会一个处理方法，直接返回
+                // 如果一个组件只会有一个处理方法，直接返回
                 if (onlyOneExecutorPerHandler) {
                     break;
                 }
             }
+        }
+        return handlerMap;
+    }
+
+    /**
+     * 获取实现了指定接口的处理器
+     * @param handlerAnnotationClazz    处理注解
+     * @param <T>                       接口类型
+     * @return  处理器列表
+     * @since 3.3.0
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> List<T> getTypeHandlers(Class<? extends Annotation> handlerAnnotationClazz) {
+        List<T> handlerMap = new ArrayList<>();
+        Map<String, Object> beanMap = ApplicationContextHolder.get().getBeansWithAnnotation(handlerAnnotationClazz);
+        for (String key : beanMap.keySet()) {
+            T target = (T) beanMap.get(key);
+            handlerMap.add(target);
         }
         return handlerMap;
     }

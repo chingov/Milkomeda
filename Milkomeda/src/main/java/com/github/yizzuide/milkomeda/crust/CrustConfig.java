@@ -1,25 +1,25 @@
 package com.github.yizzuide.milkomeda.crust;
 
-import com.github.yizzuide.milkomeda.light.*;
+import com.github.yizzuide.milkomeda.light.Cache;
+import com.github.yizzuide.milkomeda.light.LightCache;
+import com.github.yizzuide.milkomeda.light.LightCacheAspect;
+import com.github.yizzuide.milkomeda.light.LightProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-
-import java.util.Collections;
 
 /**
  * CrustConfig
  *
  * @author yizzuide
  * @since 1.14.0
- * @version 2.3.0
+ * @version 3.12.4
  * Create at 2019/11/11 14:56
  */
 @Configuration
@@ -63,23 +63,13 @@ public class CrustConfig {
         LightCache lightCache = new LightCache();
         lightCache.setL1MaxCount(lightProps.getL1MaxCount());
         lightCache.setL1DiscardPercent(lightProps.getL1DiscardPercent());
-        lightCache.setL1Expire(lightProps.getL1Expire());
+        lightCache.setL1Expire(lightProps.getL1Expire().getSeconds());
         lightCache.setStrategy(lightProps.getStrategy());
         lightCache.setStrategyClass(lightProps.getStrategyClass());
         lightCache.setOnlyCacheL1(!crustProps.isEnableCacheL2());
-        lightCache.setL2Expire(lightProps.getL2Expire());
+        lightCache.setL2Expire(lightProps.getL2Expire().getSeconds());
         lightCache.setOnlyCacheL2(false);
+        lightCache.setEnableSuperCache(lightProps.isEnableSuperCache());
         return lightCache;
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    @ConditionalOnProperty(prefix = "milkomeda.crust", name = "enable-cache", havingValue = "true", matchIfMissing = true)
-    public FilterRegistrationBean<LightCacheClearFilter> lightCacheClearFilter() {
-        FilterRegistrationBean<LightCacheClearFilter> lightCacheClearFilter = new FilterRegistrationBean<>();
-        lightCacheClearFilter.setFilter(new LightCacheClearFilter());
-        lightCacheClearFilter.setName("lightCacheClearFilter");
-        lightCacheClearFilter.setUrlPatterns(Collections.singleton("/*"));
-        return lightCacheClearFilter;
     }
 }

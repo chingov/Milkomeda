@@ -14,7 +14,7 @@ import java.util.function.Function;
  * 缓存外层API，集超级缓存、一级缓存、二级缓存于一体的方法
  *
  * @since 1.10.0
- * @version 2.3.0
+ * @version 3.12.4
  * @author yizzuide
  * Create at 2019/07/02 11:36
  */
@@ -136,7 +136,7 @@ public class CacheHelper {
         Spot<Serializable, E> fastSpot = null;
         if (cache instanceof LightCache) {
             LightCache lightCache = (LightCache) cache;
-            if (!lightCache.getOnlyCacheL2()) {
+            if (lightCache.isEnableSuperCache() && !lightCache.getOnlyCacheL2()) {
                 // 方案一：从超级缓存中获取，内存指针引用即可返回（耗时为O(1)）
                 fastSpot = get(cache);
                 if (fastSpot != null) {
@@ -163,14 +163,18 @@ public class CacheHelper {
         Spot<Serializable, E> spot = cache.get(key, new TypeReference<Serializable>() {}, eTypeRef);
         if (spot != null) {
             data = spot.getData();
-            // 设置到超级缓存
+            // 设置缓存数据
             fastSpot.setData(data);
             return data;
         }
 
         // 方案三：从数据库获取（耗时最长，一个标识只会查一次）
         data = dataGenerator.apply(fastSpot.getView().toString());
-        // 设置到超级缓存
+        // 如果返回值为null，不缓存
+        if (data == null) {
+            return data;
+        }
+        // 设置缓存数据
         fastSpot.setData(data);
         // 一级缓存（内存，默认缓存64个，超出时使用热点旧数据丢弃策略） -> 二级缓存（Redis）
         cache.set(key, fastSpot);
@@ -202,16 +206,18 @@ public class CacheHelper {
         // 先执行数据操作
         String key = keyGenerator.apply(id);
         E data = dataGenerator.apply(key);
-        // 检查返回值
+
+        // 返回值如果为空，清空缓存
         if (data == null) {
-            throw new NullPointerException("The method return is null, it must be set not null for update cache");
+            erase(cache, id, keyGenerator);
+            return data;
         }
 
         // 再存入缓存
         Spot<Serializable, E> fastSpot = null;
         if (cache instanceof LightCache) {
             LightCache lightCache = (LightCache) cache;
-            if (!lightCache.getOnlyCacheL2()) {
+            if (lightCache.isEnableSuperCache() && !lightCache.getOnlyCacheL2()) {
                 fastSpot = get(cache);
                 if (fastSpot == null) {
                     // 设置超级缓存
@@ -224,6 +230,7 @@ public class CacheHelper {
             }
         }
         assert fastSpot != null;
+        // 设置缓存数据
         fastSpot.setData(data);
         // 设置一级缓存 -> 二级缓存
         cache.set(key, fastSpot);

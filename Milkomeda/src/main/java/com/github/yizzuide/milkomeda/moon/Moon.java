@@ -1,30 +1,39 @@
 package com.github.yizzuide.milkomeda.moon;
 
+import com.github.yizzuide.milkomeda.atom.AtomLock;
+import com.github.yizzuide.milkomeda.atom.AtomLockType;
 import com.github.yizzuide.milkomeda.light.LightCachePut;
 import com.github.yizzuide.milkomeda.light.LightCacheable;
-import lombok.Getter;
+import com.github.yizzuide.milkomeda.universe.context.AopContextHolder;
+import lombok.Data;
 
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Moon
  *
  * @author yizzuide
  * @since 2.2.0
- * @version 2.3.0
+ * @version 3.7.0
  * Create at 2019/12/31 18:13
  */
+@Data
 public class Moon<T> {
     public static final String CACHE_NAME = "lightCacheMoon";
+
+    /**
+     * 缓存实例名
+     */
+    private String cacheName = CACHE_NAME;
     /**
      * 链表头指针
      */
-    @Getter
     private MoonNode<T> header;
     /**
      * 链表记录指针
      */
-    @Getter
     private MoonNode<T> pointer;
     /**
      * 链块连接指针
@@ -33,11 +42,31 @@ public class Moon<T> {
     /**
      * 链表长度
      */
-    @Getter
     private int len;
 
-    // 并发指针锁
-    private ReentrantLock reentrantLock = new ReentrantLock(false);
+    /**
+     * 阶段列表
+     */
+    private List<T> phaseNames;
+
+    /**
+     * 阶段分配策略
+     */
+    private MoonStrategy moonStrategy;
+
+    /**
+     * 策略运行模式
+     */
+    private boolean mixinMode;
+
+    /**
+     * 设置并替换阶段
+     * @param phaseNames    阶段列表
+     */
+    @SafeVarargs
+    public final void set(T... phaseNames) {
+        this.add(phaseNames);
+    }
 
     /**
      * 添加阶段名
@@ -45,70 +74,63 @@ public class Moon<T> {
      */
     @SafeVarargs
     public final void add(T... phaseNames) {
-        this.len = phaseNames.length;
-        for (int i = 0; i < this.len; i++) {
+        this.setPhaseNames(new ArrayList<>(Arrays.asList(phaseNames)));
+        this.setLen(phaseNames.length);
+        for (int i = 0; i < this.getLen(); i++) {
             if (i == 0) {
-                this.header = new MoonNode<>();
-                this.header.setData(phaseNames[i]);
-                this.next = this.header;
+                this.setHeader(new MoonNode<>());
+                this.getHeader().setData(phaseNames[i]);
+                this.setNext(this.getHeader());
                 continue;
             }
             MoonNode<T> moonNode = new MoonNode<>();
             moonNode.setData(phaseNames[i]);
-            this.next.setNext(moonNode);
-            this.next = moonNode;
+            this.getNext().setNext(moonNode);
+            this.setNext(moonNode);
         }
         // 尾连首
-        this.next.setNext(this.header);
+        this.getNext().setNext(this.getHeader());
         // 指向首
-        this.pointer = this.header;
+        this.setPointer(this.getHeader());
     }
 
     /**
-     * 无序并发获得当前阶段类型（每调用一次，内部指针向后移一位）
-     * @return 阶段类型值
+     * 无序并发获得当前阶段类型（不支持分布式）
+     * @return 阶段值
      */
     public T getCurrentPhase() {
-        this.reentrantLock.lock();
-        T data = this.pointer.getData();
-        this.pointer = this.pointer.getNext();
-        this.reentrantLock.unlock();
-        return data;
+        return this.getMoonStrategy().getCurrentPhase(this);
     }
 
     /**
-     * 根据key获取当前轮的当前阶段的数据值（并发线程安全）
-     * @param key          缓存key，一个轮对应一个key
+     * 基于高性能lua获取（分布式并发安全）
+     * @param key          缓存key，一个环对应一个key
      * @param prototype    Moon实例原型
      * @param <T>          阶段的类型
-     * @return  当前轮的当前阶段的类型值
+     * @return  当前环的当前阶段值
      */
     public static <T> T getPhase(String key, Moon<T> prototype) {
-        // 先获取链头
-        MoonNode<T> next = prototype.getHeader();
-        // 获取左手指月
-        LeftHandPointer leftHandPointer = prototype.getLeftHandPointer(key);
-        int p = leftHandPointer.getCurrent();
-        // 如果不是指向头，向后拔动
-        if (p != 0) {
-            for (int i = 0; i < p; i++) {
-                next = next.getNext();
-            }
+        if (prototype.isMixinMode()) {
+            return prototype.getPhase(key);
         }
-        // 开始左手指月，拔动月相
-        prototype.pluckLeftHandPointer(key, leftHandPointer);
-        return next.getData();
+        return prototype.getMoonStrategy().getPhaseFast(key, prototype);
     }
 
     /**
-     * 根据key获取当前左手指月（缓存默认为一天，仅缓存到CacheL2，自定义配置通过注册名为`lightCacheMoon`的Cache Bean
-     * @param key 缓存key
-     * @return LeftHandPointer
+     * 基于分布式锁获取，需要添加 <code>@EnableAspectJAutoProxy(exposeProxy=true)</code>（分布式并发安全）
+     * @param key   缓存key，一个环对应一个key
+     * @return  当前环的当前阶段值
      */
-    @LightCacheable(value = CACHE_NAME, keyPrefix = "moon:lhp-", key = "#key", expire = 86400, onlyCacheL2 = true)
-    protected LeftHandPointer getLeftHandPointer(String key) {
-        // 无法从缓存中获取时，创建新的左手指月
-        return new LeftHandPointer();
+    @AtomLock(key = "#target.cacheName + '_' + #key", type = AtomLockType.NON_FAIR, waitTime = 60000)
+    protected T getPhase(String key) {
+        Moon<?> target = AopContextHolder.self(this.getClass());
+        // 获取左手指月
+        LeftHandPointer leftHandPointer = target.getLeftHandPointer(key);
+        Integer p = leftHandPointer.getCurrent();
+        T phase = this.getMoonStrategy().getPhase(key, p, this);
+        // 开始左手指月，拔动月相
+        target.pluckLeftHandPointer(key, leftHandPointer);
+        return phase;
     }
 
     /**
@@ -117,12 +139,21 @@ public class Moon<T> {
      * @param leftHandPointer 左手指月
      * @return LeftHandPointer
      */
-    @LightCachePut(value = CACHE_NAME, keyPrefix = "moon:lhp-", key = "#key")
+    @SuppressWarnings({"UnusedReturnValue", "unused"})
+    @LightCachePut(value = "#target.cacheName", keyPrefix = "moon:lhp-", key = "#key")
     protected LeftHandPointer pluckLeftHandPointer(String key, LeftHandPointer leftHandPointer) {
-        int p = leftHandPointer.getCurrent();
-        // 保持指针下标在所有月相范围内
-        p = (p + 1) % this.getLen();
-        leftHandPointer.setCurrent(p);
-        return leftHandPointer;
+        return this.getMoonStrategy().pluck(this, leftHandPointer);
+    }
+
+    /**
+     * 根据key获取当前左手指月（分布式环境下应该仅缓存到L2，自定义缓存配置通过 <code>setCacheName(String)</code>）
+     * @param key 缓存key
+     * @return LeftHandPointer
+     */
+    @SuppressWarnings("unused")
+    @LightCacheable(value = "#target.cacheName", keyPrefix = "moon:lhp-", key = "#key")
+    protected LeftHandPointer getLeftHandPointer(String key) {
+        // 无法从缓存中获取时，创建新的左手指月
+        return new LeftHandPointer();
     }
 }

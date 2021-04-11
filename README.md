@@ -1,43 +1,54 @@
 # Milkomeda
-![tag](https://img.shields.io/github/tag/yizzuide/Milkomeda.svg) ![license](https://img.shields.io/github/license/yizzuide/Milkomeda.svg)
+![tag](https://img.shields.io/github/tag/yizzuide/Milkomeda.svg) [![Maven Central](https://img.shields.io/maven-central/v/com.github.yizzuide/milkomeda-spring-boot-starter)](https://search.maven.org/search?q=g:com.github.yizzuide%20AND%20a:milkomeda-spring-boot-starter) ![Java CI](https://github.com/yizzuide/Milkomeda/workflows/Java%20CI/badge.svg?branch=master) [![Code Coverage](https://codecov.io/gh/yizzuide/Milkomeda/branch/master/graph/badge.svg)](https://codecov.io/gh/yizzuide/Milkomeda/branch/master) [![Production Ready](https://img.shields.io/badge/production-ready-blue.svg)](https://github.com/yizzuide/Milkomeda) ![license](https://img.shields.io/github/license/yizzuide/Milkomeda.svg)
 
-名字源于未来要融合的”银河织女系“，代表当前Spring生态的全家桶体系，这个项目以Spring生态为基础，从实际业务上整理出来的快速开发模块。
+The inspiration for this project name is the Milky Way and the Andromeda will merge in the future, like spring ecosystem, this project has many popular modular solution. 
+
+> This project is not demo or template, can be called "springboot plus" (sounds like a great project), each module needs to be enabled with the appropriate annotations.
+
+[中文文档](https://github.com/yizzuide/Milkomeda/blob/master/README_zh-CN.md)
+
+## Goals
+- Use meta configuration whenever possible.
+- Use annotations whenever possible.
+- Use declarative programming whenever possible.
 
 ## Modules
-- [x] Pulsar（脉冲星）: 用于长轮询、耗时请求fast-timeout等。*0.1.0+*
-   * 依赖技术：Spring MVC
-   * 设计模式：适配器模式、代理模式
-- [x] Comet（彗星）:  用于统一的请求切面日志记录（包括Controller层、Service层（*1.12.0+*））。*0.2.0+*
-   * 依赖技术：Spring MVC
-   * 设计模式：策略模式
-- [x] Pillar（创生柱）: 用于if/else业务块拆分。*0.2.0+*
-   * 可选依赖技术：Spring IoC
-   * 设计模式：策略模式、适配器模式
-- [x] Particle（粒子）: 用于幂等/去重、次数限制，及可扩展限制器责任链。*1.5.0+*
-   * 依赖技术：Spring MVC、SpringBoot Data Redis
-   * 设计模式：策略模式、责任链模式、组合模式
-- [x] Light (光）: 用于快速缓存，支持超级缓存（ThreadLocal）、一级缓存（内存缓存池）、二级缓存（Redis)。 *1.8.0+*
-   * 依赖技术：SpringBoot Data Redis
-   * 设计模式：策略模式、模板方法模式、门面模式
-- [x] Fusion（核裂变）：用于动态切面修改方法返回值（主要针对于定制前端响应数据格式）、根据条件启用/禁用组件方法的执行。*1.12.0+*
-   * 依赖技术：Spring AOP
-   * 设计模式：策略模式
-- [x] Echo（回响）：用于第三方请求，支持签名/验签、数据加密、可定制统一响应类型和成功校验。*1.13.0+*
-   * 依赖技术：Spring MVC
-   * 设计模式：模板方法模式、适配器模式、工厂方法模式
-- [x] Crust（外壳）：用于生成JWT Token，支持验证、刷新Token，可选配置对称与RSA非对称生成Token，BCrypt或自定义salt表字段加密的方式。*1.14.0+*
-   * 依赖技术：Spring Security
-   * 设计模式：模板方法模式、适配器模式
-- [x] Ice（冰）：用于延迟列队的需求，支持配置延迟分桶、任务执行超时时间（TTR）、超时重试、Task自动调度等。*1.15.0+*
-   * 依赖技术：Spring IoC、Spring Task、SpringBoot Data Redis
-   * 设计模式：策略模式、享元模式、门面模式、面向声明式编程
-- [x] Neutron（中子星）：用于定时作业任务，支持数据库持久化，动态创建Job、删除、修改Cron执行表达式。*1.18.0+*
-   * 依赖技术：Spring IoC、Quartz
-   * 设计模式：门面模式
-- [x] Moon（月球）：用于在多个类型值之间轮询，支持并发操作，支持泛型数据值，不同的环业务相互隔离。*2.2.0*
-  * 依赖技术：Spring IoC
-  * 设计数据结构：环形链表
-  * 设计模式：门面模式
+- [x] Pulsar: Used for long polling, fast-timeout. *0.1.0+*
+   * Depends on: Spring MVC
+- [x] Comet: Used for uniform request facet logging (include controller layer and service layer (*1.12.0+*)). *0.2.0+*
+   * Depends on: Spring MVC
+- [x] Pillar: Used for if/else business block splitting. *0.2.0+*
+   * Depends on: Spring IoC
+- [x] Particle: Support idempotent, times and Bloom limiter (*3.9.0*), also allow extensible limiter chain of responsibility. *1.5.0+*
+   * Depends on: Spring MVC, SpringBoot Data Redis
+- [x] Light: Used for data cache, support super cache (ThreadLocal), L1 cache（RAM), L2 cache (Redis). *1.8.0+*
+   * Depends on: SpringBoot Data Redis
+- [x] Fusion: Used for dynamic modify method return value, invoke methods based on conditions (support fallback when condition is disallow). *1.12.0+*
+   * Depends on: Spring AOP
+- [x] Echo: Integrating the `RestTemplate` with support sign/unsigned with RSA, encryption with AES, uniform response and verification . *1.13.0+*
+   * Depends on: Spring MVC
+- [x] Crust: Used for both session login and jwt Token stateless login, support config token encryption with RSA and AES. *1.14.0+*
+   * Depends on: Spring Security
+- [x] Ice: Used for delay queue, support delay bucket, TTR, task auto schedule. *1.15.0+*
+   * Depends on: Spring IoC, Spring Task, SpringBoot Data Redis
+- [x] Neutron: Used for time task，support create/delete/update job online. *1.18.0+*
+   * Depends on: Spring IoC, Quartz
+- [x] Moon: Used for polling between multiple type values, support for concurrent operations, support for generic data values, and isolation of different services. *2.2.0+*
+  * Depends on: Spring IoC, SpringBoot Data Redis
+- [x] Halo: Used for listen Mybatis CRUD. *2.5.0+*
+  * Depends on: Mybatis
+- [x] Hydrogen: Used for aop transactions, unified exception response handling (also support for custom exceptions), parameter validation, internationalization, add interceptors and filters dynamically (support for loaded online). *3.0.0+*
+  * Depends on: Spring MVC
+- [x] Atom: Used for distributed lock, support both Redis and Zookeeper solution. *3.3.0+*
+  * Depends on: Redission, Curator-Recipes
+- [x] Wormhole: The event bus designed based on DDD architecture module can be used for event flow, big data business event production and output. *3.3.0+*
+  * Depends on: Spring IoC
+- [x] Sundial: Used for master-slave data source switching, addition support sub-table with consistency of the Hash (3.8.0+). *3.4.0+*
+  * Depends on: Spring JDBC, Mybatis
+- [x] Jupiter: Lightweight rule engine based on data source queries, query filtering with request domains extract expression (such as `$params`, `$attr`, `$header`)，and result matching with EL/OGNL expression parsing. *3.5.0+*
+  * Depends on: Spring JDBC, Spring EL, OGNL
+- [x] Metal: Used for distributed dynamic configuration refresh based on KV data and support property binding injection. *3.6.0+*
+  * Depends on: Spring IoC, SpringBoot Data Redis
     
 ## Requirements
 * Java 8
@@ -45,7 +56,7 @@
 * SpringBoot 2.x
 
 ## Version control guidelines
-- 1.16.0+ for Spring Boot 2.1.x - 2.2.x
+- 1.16.0+ for Spring Boot 2.1+
 - Dalston.1.11.0-Dalston.1.12.0 for Spring Boot 1.5.x
 - Others for Spring Boot 2.0.x
 
@@ -58,25 +69,15 @@
 </dependency>
 ```
 
-## 2.0 Release
-Milkomeda 2.0 is now available (Dec 2019).
+## Upgrade
+### 3.0 Release
+Milkomeda 3.0 is now available（April 2020). 
 
-- 构建的包更小，减少即时的依赖，根据开启的模块选择依赖。
-- 模块的使用更加明了，需要使用什么模块，使用`@EnableXXX`（除了非Spring依赖模块不需要开启）。
-- 部分模块使用API改进，优先使用注解的声明式编程，并使用SpEL增强，然后是API方法调用。
-- 各模块间的功能相互增强，如：`Crust`添加`Light`模块缓存加持、`Comet`添加`Pillar`模块拆分处理等。
-- 重构各模块的Config配置依赖，合理拆分工具类、Context等。
+- YML config promoted to first-class of development, allow developers to start quickly.
+- Add a new module called `Hydrogen`, the infrastructure functions of Spring and SpringMVC are all taken over, and explored from the source level.
+- The aggregation ability of functional modules has strengthened to achieve the improvement of the small world within the big world.
 
-> 在2.0改造中，有了@mars的加入，非常感谢提供很多好的建议和改进
-
-
-## Migrating to 2.x from 1.x
-1. 除了`Pillar`模块外，其它模块都需要通过`@EnableXXX`来启用模块（迁移请注意！）。
-2. 在1.x版本默认依赖的`Spring Data Redis`已被删除，需要根据使用模块是否依赖来在项目中添加（迁移请注意！）。
-3. 模块`Particle`的限制器注解在取请求头的语法`@`改为`:`（由于和SpEL的`@`语法冲突问题）。
-4. 模块`Light`的API方法方式改为使用`@LightCacheable`（仿Spring Cache，部分属性方法支持SpEL），默认使用了超级缓存（不用再操心超级缓存的复杂API了）。
-5. 模块`Crust`的token方式内建支持`Light`模块的高效多级缓存。
-6. 模块`Comet`添加注解`@CometParam`注解用于同时支持解析`application/x-www-form-urlencoded`、`JSON`的Body消息数据（Spring MVC默认是不支持的）。
+### [More](https://github.com/yizzuide/Milkomeda/wiki/Upgrade-Guide)
 
 ## Documentation
 [See Wiki](https://github.com/yizzuide/Milkomeda/wiki)
@@ -85,24 +86,23 @@ Milkomeda 2.0 is now available (Dec 2019).
 [See Releases](https://github.com/yizzuide/Milkomeda/releases)
 
 ## Contributing
-*Mikomeda*还需要更多的业务型实用模块，欢迎有想法的开发者加入进来！可以通过以下原则来Pull Request:
+The *Mikomeda* project needs more developers to work together, join us with some notice as following:
 
-- 从`master`分支拉取新分支，新添加的功能模块分支以`feat-`前缀开头，问题修复则以`fix-`为前缀。
-- 添加的模块尽可能地通用，不能含有业务代码，最好可以提供使用的Demo并添加到`MilkomedaDemo`工程里，如果有好的想法需要讨论可以提一个以[feature]开头的issue进行讨论。
-- 新添加的代码尽可能地规范，代码必需经过格式化，类的命名需要添加模块名前缀，新添加的模块需要添加到`Milkomeda`的`com.github.yizzuide.milkomeda`包下，属性和方法需要添加注释表明如果使用。
-- 建议遵行提交注释以`feat|fix|docs|style|refactor|perf|test|workflow|ci|chore|types:`为前缀。
-- 提交时不要提交IDE的配置相关文件和临时生成的文件，请注意排除。
-
-> 关于如果开发*Mikomeda*项目：使用IDEA新建空的工程，再把工程模块`Mikomeda`和`MikomedaDemo`导入即可。
+- If you have a better idea, please submit a new issue with `[feature]` prefix.
+- Fork from `master` branch, checkout a new branch named like `feat_module_yyyyMMdd` for add new module，`fix_module_yyyyMMdd` for fixing issues.
+- The newly added module should be as universal as possible, also provide demo in `MilkomedaDemo` as better.
+- The newly added module must be under package `com.github.yizzuide.milkomeda` with addition module name sub package, and can be enabled with annotation in Spring Boot environment.
+- Don't commit IDE config file and OS temp file, please add to `.gitignore` file.
+- The last thing, pull request for me with `master` branch or `dev-xxx` if there is a recent new version development branch.
 
 ## Author
-yizzuide, fu837014586@163.com
+yizzuide fu837014586@163.com
 
 ## License
 Milkomeda is available under the MIT license. See the LICENSE file for more info.
 
 ## Thanks
-<a href="https://www.jetbrains.com/idea/" target="_blank">
-          <img width="64px" src="./logo/idea.png" alt="IntelliJ IDEA">
+<a href="https://www.jetbrains.com/?from=Milkomeda" target="_blank">
+  <img width="64px" src="./logo/idea.png" alt="IntelliJ IDEA">
 </a>
 

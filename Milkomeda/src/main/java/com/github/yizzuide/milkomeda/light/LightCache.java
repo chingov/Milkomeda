@@ -4,8 +4,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.type.TypeFactory;
 import com.github.yizzuide.milkomeda.pulsar.PulsarHolder;
+import com.github.yizzuide.milkomeda.universe.polyfill.RedisPolyfill;
 import com.github.yizzuide.milkomeda.util.JSONUtil;
-import com.github.yizzuide.milkomeda.util.Polyfill;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
  * E：缓存业务数据
  *
  * @since 1.8.0
- * @version 2.3.0
+ * @version 3.12.4
  * @author yizzuide
  * Create at 2019/06/28 13:33
  */
@@ -93,15 +93,22 @@ public class LightCache implements Cache {
     private Boolean onlyCacheL2;
 
     /**
+     * 开启超缓存
+     */
+    @Setter
+    @Getter
+    private boolean enableSuperCache;
+
+    /**
      * 超级缓存（每个Cache都有自己的超级缓存，互不影响）
      */
     @Getter
-    private LightContext superCache = new LightContext();
+    private final LightContext superCache = new LightContext();
 
     /**
      * 一级缓存容器（内存池）
      */
-    private Map<String, Spot<Serializable, Object>> cacheMap = new ConcurrentSkipListMap<>();
+    private final Map<String, Spot<Serializable, Object>> cacheMap = new ConcurrentSkipListMap<>();
 
     /**
      * 二级缓存容器
@@ -183,15 +190,21 @@ public class LightCache implements Cache {
      * @param spot  缓存数据
      */
     private void cache(String key, Spot<Serializable, Object> spot) {
-        // 一级缓存
-        boolean success = true;
-        if (!onlyCacheL2) {
-            success = cacheL1(key, spot);
+        // 仅存入二级缓存
+        if (onlyCacheL2) {
+            cacheL2(key, spot);
+            return;
         }
+
+        // 一级缓存
+        boolean success = cacheL1(key, spot);
 
         // 二级缓存
         if (!onlyCacheL1 && success) {
-            cacheL2(key, spot);
+            // 有内存缓存的，异步写入到redis
+            PulsarHolder.getPulsar().post(() -> {
+                cacheL2(key, spot);
+            });
         }
     }
 
@@ -201,15 +214,12 @@ public class LightCache implements Cache {
      * @param spot  缓存数据
      */
     private void cacheL2(String key, Spot<Serializable, Object> spot) {
-        // 异步添加到Redis（由于序列化稍微耗时）
-        PulsarHolder.getPulsar().post(() -> {
-            String json = JSONUtil.serialize(spot);
-            if (l2Expire > 0) {
-                stringRedisTemplate.opsForValue().set(key, json, l2Expire, TimeUnit.SECONDS);
-            } else {
-                stringRedisTemplate.opsForValue().set(key, json);
-            }
-        });
+        String json = JSONUtil.serialize(spot);
+        if (l2Expire > 0) {
+            stringRedisTemplate.opsForValue().set(key, json, l2Expire, TimeUnit.SECONDS);
+        } else {
+            stringRedisTemplate.opsForValue().set(key, json);
+        }
     }
 
     /**
@@ -231,7 +241,7 @@ public class LightCache implements Cache {
         if (isAbandon) {
             if (!onlyCacheL1) {
                 // 从二级缓存移除
-                Polyfill.redisDelete(stringRedisTemplate, key);
+                RedisPolyfill.redisDelete(stringRedisTemplate, key);
             }
             return false;
         }
@@ -314,7 +324,7 @@ public class LightCache implements Cache {
     public void erase(String key) {
         if (!onlyCacheL1) {
             // 从二级缓存移除
-            Polyfill.redisDelete(stringRedisTemplate, key);
+            RedisPolyfill.redisDelete(stringRedisTemplate, key);
         }
         if (!onlyCacheL2) {
             // 从一级缓存移除
@@ -356,6 +366,7 @@ public class LightCache implements Cache {
                 try {
                     discardStrategy = strategyClass.newInstance();
                 } catch (Exception e) {
+                    discardStrategy  = new HotDiscard();
                     log.error("light create strategy class error with message:{}", e.getMessage(), e);
                 }
             }
@@ -374,5 +385,23 @@ public class LightCache implements Cache {
         this.setStrategyClass(other.getStrategyClass());
         this.setOnlyCacheL1(other.getOnlyCacheL1());
         this.setL2Expire(other.getL2Expire());
+        this.setOnlyCacheL2(other.getOnlyCacheL2());
+        this.setEnableSuperCache(other.isEnableSuperCache());
+    }
+
+    /**
+     * 配置实例
+     * @param props LightCache
+     */
+    public void configFrom(LightProperties props) {
+        this.setL1MaxCount(props.getL1MaxCount());
+        this.setL1DiscardPercent(props.getL1DiscardPercent());
+        this.setL1Expire(props.getL1Expire().getSeconds());
+        this.setStrategy(props.getStrategy());
+        this.setStrategyClass(props.getStrategyClass());
+        this.setOnlyCacheL1(props.isOnlyCacheL1());
+        this.setL2Expire(props.getL2Expire().getSeconds());
+        this.setOnlyCacheL2(props.isOnlyCacheL2());
+        this.setEnableSuperCache(props.isEnableSuperCache());
     }
 }

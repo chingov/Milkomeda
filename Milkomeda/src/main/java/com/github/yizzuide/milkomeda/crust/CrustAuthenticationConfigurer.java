@@ -26,9 +26,9 @@ import java.util.function.Supplier;
  */
 public class CrustAuthenticationConfigurer<T extends CrustAuthenticationConfigurer<T, B>, B extends HttpSecurityBuilder<B>> extends AbstractHttpConfigurer<T, B> {
     // 认证过滤器
-    private CrustAuthenticationFilter authFilter;
+    private final CrustAuthenticationFilter authFilter;
     // 认证失败处理器
-    private Supplier<AuthenticationFailureHandler> authFailureHandler;
+    private final Supplier<AuthenticationFailureHandler> authFailureHandler;
 
     public CrustAuthenticationConfigurer() {
         this(null);
@@ -61,13 +61,13 @@ public class CrustAuthenticationConfigurer<T extends CrustAuthenticationConfigur
 
 class RefreshSuccessHandler implements AuthenticationSuccessHandler {
     // token刷新间隔
-    private final int tokenRefreshInterval;
+    private final long tokenRefreshInterval;
     // token刷新响应字段
     private final String refreshTokenName;
 
     RefreshSuccessHandler(String refreshTokenName) {
         tokenRefreshInterval = ApplicationContextHolder.get().getBean(CrustProperties.class)
-                .getRefreshTokenInterval();
+                .getRefreshTokenInterval().toMinutes();
         this.refreshTokenName = refreshTokenName;
     }
 

@@ -1,5 +1,6 @@
 package com.github.yizzuide.milkomeda.ice;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -8,12 +9,19 @@ import org.springframework.context.annotation.Configuration;
  *
  * @author yizzuide
  * @since 1.15.2
- * @version 2.0.0
+ * @version 3.8.0
  * Create at 2019/11/21 11:14
  */
 @Configuration
 public class IceServerConfig extends IceBasicConfig {
+
     @Bean
+    public DelegatingDelayJobHandler delegatingDelayJobHandler() {
+        return new DelegatingDelayJobHandler();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public DelayTimer delayTimer() {
         return new DelayTimer();
     }
